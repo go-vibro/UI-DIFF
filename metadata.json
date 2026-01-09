@@ -1,0 +1,5 @@
+{
+  "name": "UI Visual Review System",
+  "description": "A high-end UI audit tool that compares design mockups with developed implementation screenshots. Uses AI to detect visual discrepancies, generate detailed issue lists, and provide a comprehensive completion score.",
+  "requestFramePermissions": []
+}
