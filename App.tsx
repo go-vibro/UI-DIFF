@@ -90,13 +90,14 @@ const App: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
               <FileUpload 
                 label="上传设计稿" 
-                description="支持 Figma 导出图或原型截图"
+                description="从 Figma 导出或直接复制粘贴"
                 previewUrl={designImg?.url}
                 onFileSelect={(file, base64) => setDesignImg({ url: URL.createObjectURL(file), base64, name: file.name })}
               />
               <FileUpload 
                 label="上传实现截图" 
-                description="浏览器页面或真机实现截图"
+                description="在预览页截图后直接在此粘贴"
+                shortcutHint="提示：Win+Shift+S 或 Cmd+Shift+4 截图"
                 previewUrl={implImg?.url}
                 onFileSelect={(file, base64) => setImplImg({ url: URL.createObjectURL(file), base64, name: file.name })}
               />
@@ -130,6 +131,25 @@ const App: React.FC = () => {
                 )}
               </button>
               {error && <div className="text-rose-500 text-sm font-bold bg-rose-50 px-6 py-3 rounded-2xl border border-rose-100 animate-bounce">{error}</div>}
+            </div>
+
+            {/* 技巧提示区 */}
+            <div className="mt-20 grid grid-cols-1 md:grid-cols-3 gap-6">
+               <div className="p-6 bg-white rounded-3xl border border-slate-200">
+                  <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 mb-4 font-bold">1</div>
+                  <h4 className="font-bold text-slate-800 mb-2">系统级截图</h4>
+                  <p className="text-xs text-slate-500 leading-relaxed">使用系统的部分截图快捷键，然后回到本页面直接点击输入框后 Ctrl+V 粘贴。</p>
+               </div>
+               <div className="p-6 bg-white rounded-3xl border border-slate-200">
+                  <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 mb-4 font-bold">2</div>
+                  <h4 className="font-bold text-slate-800 mb-2">捕获全尺寸</h4>
+                  <p className="text-xs text-slate-500 leading-relaxed">Chrome 控制台按下 Ctrl+Shift+P，输入 "Capture full size" 可一键获取长网页截图。</p>
+               </div>
+               <div className="p-6 bg-white rounded-3xl border border-slate-200">
+                  <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 mb-4 font-bold">3</div>
+                  <h4 className="font-bold text-slate-800 mb-2">对比视图</h4>
+                  <p className="text-xs text-slate-500 leading-relaxed">走查结果支持左右滑动对比，AI 会自动寻找并高亮所有的视觉不一致点。</p>
+               </div>
             </div>
           </div>
         ) : (
