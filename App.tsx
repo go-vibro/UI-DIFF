@@ -69,7 +69,7 @@ const App: React.FC = () => {
       });
 
       if (!response.ok) {
-        const errData = await response.json();
+        const errData = await response.json().catch(() => ({ error: "无法连接到后端服务，请确认 server.js 已启动并运行在 3000 端口。" }));
         throw new Error(errData.error || "后端服务响应异常");
       }
       
@@ -110,7 +110,13 @@ const App: React.FC = () => {
           </div>
           <h1 className="text-xl font-black tracking-tight text-slate-800">VisionAudit<span className="text-indigo-600">.pro</span></h1>
         </div>
-        {report && <button onClick={reset} className="text-xs font-bold text-slate-400 hover:text-slate-900 uppercase">重置项目</button>}
+        <div className="flex items-center gap-6">
+          <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-amber-50 rounded-full border border-amber-100">
+             <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
+             <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest">需要启动本地 server.js</span>
+          </div>
+          {report && <button onClick={reset} className="text-xs font-bold text-slate-400 hover:text-slate-900 uppercase">重置项目</button>}
+        </div>
       </nav>
 
       <main className="max-w-7xl mx-auto px-6 py-12">
