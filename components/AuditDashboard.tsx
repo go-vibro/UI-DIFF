@@ -1,3 +1,4 @@
+
 /* @jsxRuntime classic */
 /* @jsx React.createElement */
 /* @jsxFrag React.Fragment */
@@ -31,51 +32,71 @@ const AuditDashboard: React.FC<AuditDashboardProps> = ({ report, designUrl, impl
     }
   };
 
-  const metricsList = [
-    { label: '布局准确度', val: report.metrics?.layoutAccuracy ?? 0 },
-    { label: '视觉保真度', val: report.metrics?.visualFidelity ?? 0 },
-    { label: '内容一致性', val: report.metrics?.contentConsistency ?? 0 }
-  ];
+  const getScoreColor = (score: number) => {
+    if (score >= 90) return 'text-emerald-500';
+    if (score >= 70) return 'text-amber-500';
+    return 'text-rose-500';
+  };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-700">
-      {/* 左侧：统计与评分 */}
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-700 pb-20">
+      {/* 左侧：统计与性能 */}
       <div className="lg:col-span-4 space-y-6">
         <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm text-center relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full -mr-16 -mt-16 opacity-50 blur-3xl"></div>
-          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">综合完成度评分</h3>
-          <div className="relative inline-flex items-center justify-center">
-            <svg className="w-36 h-36 transform -rotate-90">
-              <circle cx="72" cy="72" r="64" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-slate-100" />
-              <circle cx="72" cy="72" r="64" stroke="currentColor" strokeWidth="12" fill="transparent" 
-                strokeDasharray={402} strokeDashoffset={402 - (402 * (report.completionScore ?? 0)) / 100}
-                className="text-indigo-600 transition-all duration-1000 ease-out" />
-            </svg>
-            <span className="absolute text-4xl font-black text-slate-900">{report.completionScore ?? 0}%</span>
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">还原度 & 性能评分</h3>
+          
+          <div className="flex justify-around items-center mb-6">
+            <div className="relative inline-flex flex-col items-center">
+              <svg className="w-24 h-24 transform -rotate-90">
+                <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-100" />
+                <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" 
+                  strokeDasharray={251} strokeDashoffset={251 - (251 * (report.completionScore ?? 0)) / 100}
+                  className="text-indigo-600 transition-all duration-1000 ease-out" />
+              </svg>
+              <span className="absolute top-[34px] text-xl font-black text-slate-900">{report.completionScore}%</span>
+              <span className="text-[10px] font-bold text-slate-400 mt-2 uppercase">视觉还原</span>
+            </div>
+
+            <div className="relative inline-flex flex-col items-center">
+              <svg className="w-24 h-24 transform -rotate-90">
+                <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-100" />
+                <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" 
+                  strokeDasharray={251} strokeDashoffset={251 - (251 * (report.performanceScore ?? 0)) / 100}
+                  className={`${getScoreColor(report.performanceScore ?? 0)} transition-all duration-1000 ease-out`} />
+              </svg>
+              <span className="absolute top-[34px] text-xl font-black text-slate-900">{report.performanceScore}%</span>
+              <span className="text-[10px] font-bold text-slate-400 mt-2 uppercase">性能预估</span>
+            </div>
           </div>
-          <div className="mt-4">
+
+          <div className="pt-6 border-t border-slate-100">
             <span className="text-5xl font-black text-slate-900 tracking-tighter">{report.rating ?? 'N/A'}</span>
-            <p className="text-xs font-bold text-slate-400 uppercase mt-1">走查结果评级</p>
+            <p className="text-xs font-bold text-slate-400 uppercase mt-1">综合质量评级</p>
           </div>
+        </div>
+
+        {/* 性能建议板块 */}
+        <div className="bg-emerald-900 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-10">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-24 h-24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <h3 className="text-xs font-black text-emerald-300 uppercase tracking-widest mb-4">前端性能优化建议</h3>
+          <ul className="space-y-4">
+            {(report.performanceSuggestions ?? []).map((s, i) => (
+              <li key={i} className="flex gap-3 text-sm font-medium text-emerald-50 leading-relaxed">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-emerald-700 flex items-center justify-center text-[10px] font-bold">{i+1}</span>
+                {s}
+              </li>
+            ))}
+          </ul>
         </div>
 
         <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-xl">
           <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">AI 执行摘要</h3>
           <p className="text-sm text-slate-200 leading-relaxed font-medium italic">“{report.summary ?? '无总结内容'}”</p>
-          
-          <div className="mt-8 pt-8 border-t border-white/10 space-y-6">
-            {metricsList.map((m, i) => (
-              <div key={i} className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">{m.label}</span>
-                  <span className="text-[10px] font-black">{m.val}%</span>
-                </div>
-                <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-indigo-500 h-full rounded-full transition-all duration-1000" style={{ width: `${m.val}%` }}></div>
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 

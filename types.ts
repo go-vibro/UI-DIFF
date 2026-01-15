@@ -16,6 +16,8 @@ export interface AuditIssue {
 
 export interface AuditReport {
   completionScore: number;
+  performanceScore: number; // 新增：性能评分
+  performanceSuggestions: string[]; // 新增：性能优化建议
   totalIssues: number;
   rating: string; 
   summary: string;

@@ -1,32 +1,36 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { AuditReport } from "../types";
 
-export const performUIAudit = async (designBase64: string, implementationBase64: string): Promise<AuditReport> => {
+export const performUIAudit = async (
+  designBase64: string, 
+  implementationBase64: string,
+  realPerfData?: any // 新增：真实的性能数据
+): Promise<AuditReport> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const model = 'gemini-3-pro-preview';
 
+  // 将真实数据嵌入 Prompt
+  const perfContext = realPerfData 
+    ? `【真实性能监测数据】：Lighthouse 得分 ${realPerfData.score}, FCP: ${realPerfData.metrics.fcp}, LCP: ${realPerfData.metrics.lcp}, CLS: ${realPerfData.metrics.cls}。`
+    : "尚未获取到真实性能指标，请根据视觉结构进行预估。";
+
   const prompt = `
-    你是一位世界级的 UI/UX 设计评审专家。请对比“设计稿”（图1）与“前端实现截图”（图2）。
+    你是一位世界级的 UI 还原度专家和性能调优专家。
+    对比“设计稿”（图1）与“前端实现截图”（图2）。
+    
+    ${perfContext}
     
     任务：
-    1. 进行像素级的对齐检查（布局、对齐方式）。
-    2. 审查字体系统（粗细、大小、行高、颜色）。
-    3. 检查色彩还原度（色值、对比度）。
-    4. 检查间距系统（Margin, Padding, 栅格）。
+    1. 视觉对比：检测布局偏移、字体偏差、颜色值不一致。
+    2. 性能解读：结合提供的真实监测数据和图2的 DOM 复杂度，给出深度技术建议。
     
     输出要求：
-    - 必须使用【中文】返回结果。
-    - completionScore: 综合完成度评分 (0-100)。
-    - rating: 综合评级 (如 A+, B, C- 等)。
-    - metrics: 布局准确度、视觉保真度、内容一致性的分值 (0-100)。
-    - summary: 2句以内的简要总结。
-    - issues: 发现的差异列表。
-      - category: 类别 (布局/字体/颜色/间距/内容)。
-      - severity: 严重程度 (致命/严重/次要/优化)。
-      - description: 具体的差异描述。
-      - suggestion: 具体的修复建议。
-      - impactScore: 影响分 (1-10)。
-      - location: 该差异在图2（实现图）中的大致中心位置坐标，使用百分比表示 {x: 0-100, y: 0-100}。
+    - 使用中文。
+    - completionScore: 视觉还原评分。
+    - performanceScore: 如果有真实数据，请参考 ${realPerfData?.score || 'AI预估'} 进行评分。
+    - performanceSuggestions: 至少3条深度技术建议。
+    - 其他字段按 Schema 返回。
   `;
 
   const response = await ai.models.generateContent({
@@ -44,6 +48,8 @@ export const performUIAudit = async (designBase64: string, implementationBase64:
         type: Type.OBJECT,
         properties: {
           completionScore: { type: Type.NUMBER },
+          performanceScore: { type: Type.NUMBER },
+          performanceSuggestions: { type: Type.ARRAY, items: { type: Type.STRING } },
           rating: { type: Type.STRING },
           summary: { type: Type.STRING },
           metrics: {
@@ -67,39 +73,27 @@ export const performUIAudit = async (designBase64: string, implementationBase64:
                 impactScore: { type: Type.NUMBER },
                 location: {
                   type: Type.OBJECT,
-                  properties: {
-                    x: { type: Type.NUMBER },
-                    y: { type: Type.NUMBER }
-                  }
+                  properties: { x: { type: Type.NUMBER }, y: { type: Type.NUMBER } }
                 }
               }
             }
           }
         },
-        required: ["completionScore", "rating", "summary", "metrics", "issues"]
+        required: ["completionScore", "performanceScore", "performanceSuggestions", "rating", "summary", "metrics", "issues"]
       }
     }
   });
 
   const text = response.text;
-  if (!text) throw new Error("AI 走查失败，请重试。");
+  if (!text) throw new Error("AI 走查失败。");
   
   try {
     const data = JSON.parse(text.trim());
     return {
-      completionScore: data.completionScore ?? 0,
-      rating: data.rating ?? 'N/A',
-      summary: data.summary ?? '未能生成总结',
-      metrics: {
-        layoutAccuracy: data.metrics?.layoutAccuracy ?? 0,
-        visualFidelity: data.metrics?.visualFidelity ?? 0,
-        contentConsistency: data.metrics?.contentConsistency ?? 0,
-      },
-      issues: data.issues ?? [],
+      ...data,
       totalIssues: (data.issues ?? []).length
     } as AuditReport;
   } catch (e) {
-    console.error("Failed to parse AI response", e);
-    throw new Error("解析 AI 返回数据失败。");
+    throw new Error("解析 AI 数据失败。");
   }
 };
