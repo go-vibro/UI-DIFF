@@ -12,82 +12,102 @@ const App: React.FC = () => {
   const [figmaUrl, setFigmaUrl] = useState('');
   const [figmaToken, setFigmaToken] = useState(() => localStorage.getItem('figma_token') || '');
   const [previewUrl, setPreviewUrl] = useState('');
+  
   const [designImg, setDesignImg] = useState<ImageData | null>(null);
   const [implImg, setImplImg] = useState<ImageData | null>(null);
   const [realPerfData, setRealPerfData] = useState<any>(null);
+  
+  const [loadingFigma, setLoadingFigma] = useState(false);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loadingPerf, setLoadingPerf] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isFetching, setIsFetching] = useState(false);
+  
   const [report, setReport] = useState<AuditReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loadingStep, setLoadingStep] = useState(0);
-
-  const loadingMessages = ["正在同步设计稿...", "正在抓取前端页面...", "正在分析性能瓶颈...", "正在生成 AI 报告..."];
 
   useEffect(() => {
     localStorage.setItem('figma_token', figmaToken);
   }, [figmaToken]);
 
+  // 获取 Figma
+  const fetchFigma = async () => {
+    if (!figmaUrl || !figmaToken) {
+      setError("请填写 Figma 链接和 Access Token");
+      return;
+    }
+    setLoadingFigma(true);
+    setError(null);
+    try {
+      const res = await fetch('http://localhost:3000/api/figma', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ figmaUrl, figmaToken })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setDesignImg({ url: data.image, base64: data.image, name: 'Figma_Export.png' });
+    } catch (err: any) {
+      setError("Figma 获取失败: " + err.message);
+    } finally {
+      setLoadingFigma(false);
+    }
+  };
+
+  // 获取预览截图（Playwright）
+  const fetchPreview = async () => {
+    if (!previewUrl) {
+      setError("请填写预览地址");
+      return;
+    }
+    setLoadingPreview(true);
+    setError(null);
+    try {
+      const res = await fetch('http://localhost:3000/api/preview-screenshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: previewUrl })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setImplImg({ url: data.image, base64: data.image, name: 'Preview_Capture.png' });
+      
+      // 成功截图后，异步请求性能审计
+      fetchPerformance();
+    } catch (err: any) {
+      setError("页面截图失败: " + err.message);
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  const fetchPerformance = async () => {
+    setLoadingPerf(true);
+    try {
+      const res = await fetch('http://localhost:3000/api/preview-performance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: previewUrl })
+      });
+      const data = await res.json();
+      if (res.ok) setRealPerfData(data);
+    } catch (e) {
+      console.error("性能审计失败", e);
+    } finally {
+      setLoadingPerf(false);
+    }
+  };
+
   const handleStartAudit = async () => {
     if (!designImg || !implImg) return;
     setIsAnalyzing(true);
     setError(null);
-    const interval = setInterval(() => setLoadingStep(prev => (prev + 1) % loadingMessages.length), 2000);
-
     try {
       const result = await performUIAudit(designImg.base64, implImg.base64, realPerfData);
       setReport(result);
     } catch (err: any) {
       setError(err.message || '分析失败');
     } finally {
-      clearInterval(interval);
       setIsAnalyzing(false);
-    }
-  };
-
-  const handleAutoCapture = async () => {
-    if (!figmaUrl && !previewUrl) {
-      setError("请至少输入一个有效地址");
-      return;
-    }
-    if (figmaUrl && !figmaToken) {
-      setError("抓取 Figma 需要 Access Token，请在下方设置。");
-      return;
-    }
-    
-    setIsFetching(true);
-    setError(null);
-
-    try {
-      const response = await fetch('http://localhost:3000/api/audit-setup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          figmaUrl, 
-          previewUrl, 
-          figmaToken 
-        })
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({ error: "无法连接到后端服务，请确认 server.js 已启动并运行在 3000 端口。" }));
-        throw new Error(errData.error || "后端服务响应异常");
-      }
-      
-      const data = await response.json();
-      
-      if (data.designImg) {
-        setDesignImg({ url: data.designImg, base64: data.designImg, name: 'Figma_Export.png' });
-      }
-      if (data.implImg) {
-        setImplImg({ url: data.implImg, base64: data.implImg, name: 'Preview_Capture.png' });
-      }
-      if (data.perfData) {
-        setRealPerfData(data.perfData);
-      }
-    } catch (err: any) {
-      setError("自动化获取失败: " + err.message);
-    } finally {
-      setIsFetching(false);
     }
   };
 
@@ -100,94 +120,158 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans pb-24">
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200/50 px-6 h-20 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-slate-900 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-200">
             <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <h1 className="text-xl font-black tracking-tight text-slate-800">VisionAudit<span className="text-indigo-600">.pro</span></h1>
-        </div>
-        <div className="flex items-center gap-6">
-          <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-amber-50 rounded-full border border-amber-100">
-             <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
-             <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest">需要启动本地 server.js</span>
+          <div>
+            <h1 className="text-xl font-black tracking-tight text-slate-800">VisionAudit<span className="text-indigo-600">.pro</span></h1>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">AI-Powered Visual Diff System</p>
           </div>
-          {report && <button onClick={reset} className="text-xs font-bold text-slate-400 hover:text-slate-900 uppercase">重置项目</button>}
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="hidden lg:flex items-center gap-2 px-3 py-1 bg-slate-50 rounded-full border border-slate-200">
+             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Backend Connected</span>
+          </div>
+          {report && <button onClick={reset} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition-colors">新审计</button>}
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-6 py-12">
+      <main className="max-w-6xl mx-auto px-6 pt-12">
         {!report ? (
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-10">
-              <h2 className="text-5xl font-black text-slate-900 mb-4 tracking-tighter">自动化 <span className="text-indigo-600">UI 走查</span></h2>
-              <p className="text-slate-500 font-medium italic">输入 URL，剩下的交给 AI</p>
+          <div className="space-y-12">
+            <header className="text-center max-w-3xl mx-auto mb-4">
+              <h2 className="text-6xl font-black text-slate-900 mb-6 tracking-tighter leading-none italic">
+                视觉走查 <span className="text-indigo-600">快人一步</span>
+              </h2>
+              <p className="text-slate-400 text-lg font-medium">支持自动化同步或手动上传，精准对比设计细节与性能指标</p>
+            </header>
+
+            {/* 第一阶段：资产获取 (自动化) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Figma Card */}
+              <section className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-10 opacity-5 -mr-4 -mt-4 transition-transform group-hover:scale-110 duration-500">
+                  <svg className="w-32 h-32" viewBox="0 0 38 57" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M19 28.5C19 25.0196 20.3828 21.6818 22.8442 19.2205C25.3055 16.7592 28.6433 15.3763 32.1237 15.3763V0H6.26477C2.8047 0 0 2.8047 0 6.26477V22.2352C0 25.6953 2.8047 28.5 6.26477 28.5H19Z" fill="currentColor"/></svg>
+                </div>
+                <div className="relative z-10 space-y-6">
+                  <header className="flex items-center gap-3">
+                    <span className="px-2 py-1 bg-orange-100 text-orange-600 text-[10px] font-black rounded-md">AUTO SYNC</span>
+                    <h3 className="font-black text-slate-800 uppercase tracking-widest text-xs">Figma 设计源</h3>
+                  </header>
+                  <div className="space-y-3">
+                    <input type="text" value={figmaUrl} onChange={e => setFigmaUrl(e.target.value)} placeholder="Figma 链接 (选中 Frame 复制)" className="w-full h-14 px-5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 ring-orange-500/20 text-sm transition-all" />
+                    <input type="password" value={figmaToken} onChange={e => setFigmaToken(e.target.value)} placeholder="Access Token (figd_...)" className="w-full h-12 px-5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 ring-orange-500/20 text-xs font-mono" />
+                  </div>
+                  <button onClick={fetchFigma} disabled={loadingFigma} className={`w-full h-14 rounded-2xl font-black uppercase tracking-widest transition-all ${loadingFigma ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-orange-600 shadow-xl shadow-orange-100'}`}>
+                    {loadingFigma ? "同步中..." : "一键同步设计稿"}
+                  </button>
+                </div>
+              </section>
+
+              {/* Preview Card */}
+              <section className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-10 opacity-5 -mr-4 -mt-4 transition-transform group-hover:scale-110 duration-500">
+                  <svg className="w-32 h-32" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" /></svg>
+                </div>
+                <div className="relative z-10 space-y-6">
+                  <header className="flex items-center gap-3">
+                    <span className="px-2 py-1 bg-indigo-100 text-indigo-600 text-[10px] font-black rounded-md">AUTO SYNC</span>
+                    <h3 className="font-black text-slate-800 uppercase tracking-widest text-xs">Playwright 页面截图</h3>
+                  </header>
+                  <div className="space-y-3">
+                    <input type="text" value={previewUrl} onChange={e => setPreviewUrl(e.target.value)} placeholder="https://your-preview-site.com" className="w-full h-14 px-5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 ring-indigo-500/20 text-sm transition-all" />
+                    <div className="flex items-center justify-between p-3 bg-indigo-50/50 rounded-2xl border border-indigo-100">
+                      <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">性能审计</span>
+                      {loadingPerf ? (
+                         <span className="text-[10px] text-indigo-500 animate-pulse font-bold">Lighthouse 运行中...</span>
+                      ) : realPerfData ? (
+                         <span className="text-[10px] text-emerald-500 font-bold">已就绪 (Score: {realPerfData.score})</span>
+                      ) : (
+                         <span className="text-[10px] text-slate-300 font-bold">待截图后启动</span>
+                      )}
+                    </div>
+                  </div>
+                  <button onClick={fetchPreview} disabled={loadingPreview} className={`w-full h-14 rounded-2xl font-black uppercase tracking-widest transition-all ${loadingPreview ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-xl shadow-indigo-100'}`}>
+                    {loadingPreview ? "抓取中..." : "自动同步预览页"}
+                  </button>
+                </div>
+              </section>
             </div>
 
-            <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm mb-12 space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Figma Design URL</label>
-                  <input 
-                    type="text" value={figmaUrl} onChange={e => setFigmaUrl(e.target.value)}
-                    placeholder="https://www.figma.com/design/..." 
-                    className="w-full h-14 px-6 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-indigo-500 transition-colors text-sm"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Preview URL</label>
-                  <input 
-                    type="text" value={previewUrl} onChange={e => setPreviewUrl(e.target.value)}
-                    placeholder="https://your-site.com" 
-                    className="w-full h-14 px-6 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-indigo-500 transition-colors text-sm"
-                  />
-                </div>
+            {/* 第二阶段：素材确认 (手动上传/结果展示) */}
+            <div className="space-y-6">
+              <div className="flex items-center gap-3 px-2">
+                <div className="h-px flex-1 bg-slate-200"></div>
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">或 手动确认素材</h3>
+                <div className="h-px flex-1 bg-slate-200"></div>
               </div>
               
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Figma Access Token</label>
-                <div className="relative">
-                  <input 
-                    type="password" value={figmaToken} onChange={e => setFigmaToken(e.target.value)}
-                    placeholder="figd_..." 
-                    className="w-full h-12 px-6 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 transition-colors text-xs font-mono"
-                  />
-                  <a href="https://www.figma.com/settings/developers" target="_blank" className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-indigo-500 hover:underline">获取 Token</a>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <FileUpload 
+                  label="设计稿素材" 
+                  description="点击上传或直接粘贴 (Ctrl+V)" 
+                  previewUrl={designImg?.url} 
+                  onFileSelect={(file, base64) => setDesignImg({ url: URL.createObjectURL(file), base64, name: file.name })} 
+                />
+                <FileUpload 
+                  label="实现页素材" 
+                  description="点击上传或直接粘贴 (Ctrl+V)" 
+                  previewUrl={implImg?.url} 
+                  onFileSelect={(file, base64) => setImplImg({ url: URL.createObjectURL(file), base64, name: file.name })} 
+                />
+              </div>
+            </div>
+
+            {/* 第三阶段：开始对比 */}
+            <div className="flex flex-col items-center py-8">
+              <div className="mb-6 flex items-center gap-8">
+                <div className="flex items-center gap-2">
+                   <div className={`w-2 h-2 rounded-full ${designImg ? 'bg-emerald-500' : 'bg-slate-200'}`}></div>
+                   <span className="text-[10px] font-black uppercase text-slate-400">设计稿已就绪</span>
+                </div>
+                <div className="flex items-center gap-2">
+                   <div className={`w-2 h-2 rounded-full ${implImg ? 'bg-emerald-500' : 'bg-slate-200'}`}></div>
+                   <span className="text-[10px] font-black uppercase text-slate-400">实现图已就绪</span>
                 </div>
               </div>
 
               <button 
-                onClick={handleAutoCapture} disabled={isFetching}
-                className="w-full h-14 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest hover:bg-indigo-600 transition-all flex items-center justify-center gap-3 shadow-xl"
+                disabled={!designImg || !implImg || isAnalyzing} 
+                onClick={handleStartAudit} 
+                className={`
+                  group relative h-24 px-24 rounded-[3rem] font-black text-3xl transition-all shadow-2xl tracking-tighter overflow-hidden
+                  ${!designImg || !implImg 
+                    ? 'bg-slate-100 text-slate-300 cursor-not-allowed border border-slate-200 shadow-none' 
+                    : 'bg-slate-900 text-white hover:scale-105 active:scale-95 shadow-indigo-200'}
+                `}
               >
-                {isFetching ? (
-                   <>
-                    <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>正在同步所有素材...</span>
-                   </>
-                ) : "一键抓取设计稿与实现页面"}
+                {isAnalyzing ? (
+                  <span className="flex items-center gap-4">
+                    <svg className="animate-spin h-8 w-8 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    正在深度走查...
+                  </span>
+                ) : (
+                  <>
+                    <span className="relative z-10">开始 AI 走查对比</span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-violet-600 translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
+                  </>
+                )}
               </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-              <FileUpload label="设计稿" description="支持粘贴/上传" previewUrl={designImg?.url} onFileSelect={(file, base64) => setDesignImg({ url: URL.createObjectURL(file), base64, name: file.name })} />
-              <FileUpload label="实现截图" description="支持粘贴/上传" previewUrl={implImg?.url} onFileSelect={(file, base64) => setImplImg({ url: URL.createObjectURL(file), base64, name: file.name })} />
-            </div>
-
-            <div className="flex flex-col items-center">
-              <button 
-                disabled={!designImg || !implImg || isAnalyzing} onClick={handleStartAudit}
-                className={`h-16 px-16 rounded-[2.5rem] font-black text-xl transition-all shadow-2xl tracking-tight ${!designImg || !implImg ? 'bg-slate-100 text-slate-300' : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:scale-105 active:scale-95'}`}
-              >
-                {isAnalyzing ? loadingMessages[loadingStep] : "生成深度对比报告"}
-              </button>
-              {error && <div className="mt-6 text-rose-500 bg-rose-50 px-6 py-3 rounded-2xl border border-rose-100 font-bold text-sm text-center max-w-lg">{error}</div>}
+              
+              {error && (
+                <div className="mt-8 px-8 py-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-3xl font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  {error}
+                </div>
+              )}
             </div>
           </div>
         ) : (
