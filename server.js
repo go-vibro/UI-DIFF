@@ -1,4 +1,7 @@
-
+/**
+ * VisionAudit Pro Backend Server
+ * Engine: Playwright (Chromium)
+ */
 const express = require('express');
 const { chromium } = require('playwright');
 const lighthouse = require('lighthouse');
@@ -34,7 +37,7 @@ app.post('/api/figma', async (req, res) => {
     });
 
     const imageUrl = figmaRes.data.images[parsed.nodeId];
-    if (!imageUrl) throw new Error("Figma 导出失败。");
+    if (!imageUrl) throw new Error("Figma 导出失败，无法获取该节点的图像。");
 
     const imgBuffer = await axios.get(imageUrl, { responseType: 'arraybuffer' });
     const base64 = `data:image/png;base64,${Buffer.from(imgBuffer.data).toString('base64')}`;
@@ -44,16 +47,24 @@ app.post('/api/figma', async (req, res) => {
   }
 });
 
-// 2. Playwright 网页截图接口
+// 2. Playwright 网页高清截图接口
 app.post('/api/preview-screenshot', async (req, res) => {
   const { url } = req.body;
   let browser;
   try {
-    browser = await chromium.launch();
-    const page = await browser.newPage();
-    await page.setViewportSize({ width: 1440, height: 900 });
+    browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 900 }
+    });
+    const page = await context.newPage();
+    
+    // 等待网络空闲，确保 SPA 渲染完成
     await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
-    await page.waitForTimeout(1000); // 等待动画稳定
+    
+    // 给动画一点缓冲时间
+    await page.waitForTimeout(1000);
+    
+    // 截取全屏图以应对长滚动页面
     const buffer = await page.screenshot({ fullPage: true });
     const base64 = `data:image/png;base64,${buffer.toString('base64')}`;
     res.json({ image: base64 });
@@ -70,7 +81,12 @@ app.post('/api/preview-performance', async (req, res) => {
   let chrome;
   try {
     chrome = await chromeLauncher.launch({ chromeFlags: ['--headless', '--no-sandbox'] });
-    const options = { output: 'json', onlyCategories: ['performance'], port: chrome.port };
+    const options = { 
+      output: 'json', 
+      onlyCategories: ['performance'], 
+      port: chrome.port 
+    };
+    
     const runnerResult = await lighthouse(url, options);
     const reportJson = JSON.parse(runnerResult.report);
     const audits = reportJson.audits;
@@ -92,4 +108,4 @@ app.post('/api/preview-performance', async (req, res) => {
 });
 
 const PORT = 3000;
-app.listen(PORT, () => console.log(`Playwright API running on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`VisionAudit Pro Backend running on http://localhost:${PORT}`));
